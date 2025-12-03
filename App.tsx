@@ -42,7 +42,7 @@ const App: React.FC = () => {
     
     try {
       // Pass accessKey to service
-      const result = await generateCardContent(inputText, accessKey);
+      const result = await generateCardContent(inputText, accessKey|| "debug_mode");
       setCardContent(result);
       setState({ isLoading: false, error: null, hasResult: true });
     } catch (e: any) {

@@ -1,9 +1,11 @@
+
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { toPng } from 'html-to-image';
 import JSZip from 'jszip';
-import { Image, FileCode, Loader2, Layers, Smartphone, MessageCircle, ChevronDown, Grid, Eye, ChevronLeft, ChevronRight, Package, Images, User, Upload, X, Move, Type, Settings2, GripVertical, Edit3 } from 'lucide-react';
+import { Image, FileCode, Loader2, Layers, Smartphone, MessageCircle, ChevronDown, Grid, Eye, ChevronLeft, ChevronRight, Package, Images, User, Upload, Edit3, Move, Palette } from 'lucide-react';
 import { CardContent, CardStyle, UserInfo, UserInfoPosition } from '../types';
 import CardRenderer from './CardRenderer';
+import { generateStandardSvg } from '../utils/svgGenerator'; // Import custom generator
 
 interface CardGridProps {
   content: CardContent;
@@ -22,183 +24,7 @@ interface ExportTask {
   }>;
 }
 
-// --- HTML Stripper Helper ---
-const stripHtml = (html: string) => {
-   const tmp = document.createElement("DIV");
-   tmp.innerHTML = html;
-   return tmp.textContent || tmp.innerText || "";
-};
-
-// --- Text Wrapping Helper for SVG ---
-const wrapText = (text: string, maxCharsPerLine: number) => {
-  const words = text.split('');
-  const lines = [];
-  let currentLine = '';
-
-  words.forEach((char) => {
-    if ((currentLine + char).length > maxCharsPerLine) {
-      lines.push(currentLine);
-      currentLine = char;
-    } else {
-      currentLine += char;
-    }
-  });
-  if (currentLine) lines.push(currentLine);
-  return lines;
-};
-
-// --- Manual SVG Generator ---
-// This ensures 100% native SVG elements for editability, bypassing html-to-image for SVG exports.
-const generateEditableSvg = (
-  content: CardContent, 
-  style: CardStyle, 
-  renderMode: 'cover' | 'slide', 
-  sectionIndex: number, 
-  width: number, 
-  height: number, 
-  userInfo: UserInfo
-): string => {
-  
-  // Style Configuration Map
-  const styleMap: Record<CardStyle, any> = {
-    [CardStyle.MINIMALIST]: { bg: '#ffffff', text: '#111827', accent: '#e5e7eb', font: 'Inter, sans-serif' },
-    [CardStyle.MODERN_GRADIENT]: { bg: 'url(#gradient-bg)', text: '#ffffff', accent: 'rgba(255,255,255,0.2)', font: 'Inter, sans-serif' },
-    [CardStyle.CYBERPUNK]: { bg: '#09090b', text: '#06b6d4', accent: '#ec4899', font: 'JetBrains Mono, monospace' },
-    [CardStyle.NEO_BRUTALISM]: { bg: '#FFDEE9', text: '#000000', accent: '#FEFF9C', font: 'Inter, sans-serif', stroke: 4 },
-    [CardStyle.ELEGANT_LUXURY]: { bg: '#0a0a0a', text: '#f0f0f0', accent: '#C5A059', font: 'Playfair Display, serif' },
-    [CardStyle.NATURE_ORGANIC]: { bg: '#f5f5f0', text: '#2d342d', accent: '#6b8e6b', font: 'Noto Serif SC, serif' },
-    [CardStyle.GLASSMORPHISM]: { bg: 'url(#glass-gradient)', text: '#ffffff', accent: 'rgba(255,255,255,0.1)', font: 'Inter, sans-serif' },
-    [CardStyle.NEWSPAPER]: { bg: '#F0EAD6', text: '#111827', accent: '#000000', font: 'Playfair Display, serif' },
-  };
-
-  const s = styleMap[style];
-  const padding = 60;
-  const isCover = renderMode === 'cover';
-  const currentSection = !isCover && content.sections[sectionIndex] ? content.sections[sectionIndex] : null;
-
-  // Definitions (Gradients)
-  const defs = `
-    <defs>
-      <linearGradient id="gradient-bg" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#7c3aed" />
-        <stop offset="50%" stop-color="#c026d3" />
-        <stop offset="100%" stop-color="#f97316" />
-      </linearGradient>
-      <linearGradient id="glass-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#4facfe" />
-        <stop offset="100%" stop-color="#00f2fe" />
-      </linearGradient>
-      <clipPath id="avatar-clip">
-        <circle cx="25" cy="25" r="25" />
-      </clipPath>
-    </defs>
-  `;
-
-  // Background
-  let bgElement = `<rect width="100%" height="100%" fill="${s.bg}" />`;
-  if (style === CardStyle.NEO_BRUTALISM) {
-    bgElement = `<rect width="100%" height="100%" fill="${s.bg}" /><rect x="0" y="0" width="100%" height="100%" fill="none" stroke="#000" stroke-width="12" />`;
-  }
-
-  // Content Rendering
-  let mainContent = '';
-  
-  if (isCover) {
-    // Title
-    const titleLines = wrapText(stripHtml(content.title), 12);
-    const titleSvg = titleLines.map((line, i) => 
-      `<tspan x="${padding}" dy="${i === 0 ? 0 : 70}">${line}</tspan>`
-    ).join('');
-    
-    mainContent += `<text x="${padding}" y="${200}" font-family="${s.font}" font-size="60" font-weight="800" fill="${s.text}">${titleSvg}</text>`;
-
-    // Summary
-    const summaryLines = wrapText(stripHtml(content.summary), 18);
-    mainContent += `<text x="${padding}" y="${450}" font-family="${s.font}" font-size="28" font-weight="400" fill="${s.text}" opacity="0.9">
-      ${summaryLines.map((line, i) => `<tspan x="${padding}" dy="${i === 0 ? 0 : 40}">${line}</tspan>`).join('')}
-    </text>`;
-
-    // Key Points
-    content.keyPoints.forEach((point, i) => {
-       mainContent += `<circle cx="${padding + 10}" cy="${700 + (i * 50)}" r="6" fill="${s.accent}" />`;
-       mainContent += `<text x="${padding + 40}" y="${708 + (i * 50)}" font-family="${s.font}" font-size="24" fill="${s.text}">${stripHtml(point)}</text>`;
-    });
-  } else if (currentSection) {
-    // Slide Number
-    mainContent += `<text x="${width - padding}" y="120" font-family="${s.font}" font-size="100" font-weight="900" fill="${s.text}" opacity="0.1" text-anchor="end">${(sectionIndex + 1).toString().padStart(2, '0')}</text>`;
-
-    // Section Title
-    const secTitleLines = wrapText(stripHtml(currentSection.title), 14);
-    mainContent += `<text x="${width / 2}" y="250" font-family="${s.font}" font-size="48" font-weight="bold" fill="${s.text}" text-anchor="middle">
-      ${secTitleLines.map((line, i) => `<tspan x="${width/2}" dy="${i === 0 ? 0 : 60}">${line}</tspan>`).join('')}
-    </text>`;
-    
-    // Separator
-    mainContent += `<line x1="${width/2 - 50}" y1="320" x2="${width/2 + 50}" y2="320" stroke="${s.accent}" stroke-width="4" />`;
-
-    // Content Paragraph
-    const lines = wrapText(stripHtml(currentSection.content), 22);
-    mainContent += `<text x="${width / 2}" y="400" font-family="${s.font}" font-size="30" fill="${s.text}" text-anchor="middle">
-      ${lines.map((line, i) => `<tspan x="${width/2}" dy="${i === 0 ? 0 : 48}">${line}</tspan>`).join('')}
-    </text>`;
-  }
-
-  // User Info Layer
-  let userInfoLayer = '';
-  if (userInfo.enabled && userInfo.avatar) {
-     const uSize = 50 * userInfo.scale;
-     const uFontSize = 20 * userInfo.scale;
-     let ux = 0, uy = 0;
-     let textAnchor = 'start';
-     let textX = 0;
-
-     // Calculate Coords
-     const margin = 30;
-     if (userInfo.position === 'custom') {
-        ux = width * (userInfo.customPos.x / 100);
-        uy = height * (userInfo.customPos.y / 100);
-        // HTML renderer puts top-left at customPos%. Let's match that.
-        textX = ux + uSize + 15;
-     } else {
-        if (userInfo.position === 'top-left') { ux = margin; uy = margin; textX = ux + uSize + 15; }
-        if (userInfo.position === 'top-right') { ux = width - margin - uSize; uy = margin; textAnchor = 'end'; textX = ux - 15; }
-        if (userInfo.position === 'bottom-left') { ux = margin; uy = height - margin - uSize; textX = ux + uSize + 15; }
-        if (userInfo.position === 'bottom-right') { ux = width - margin - uSize; uy = height - margin - uSize; textAnchor = 'end'; textX = ux - 15; }
-     }
-
-     // Determine text color for user info
-     const isDarkBg = [CardStyle.CYBERPUNK, CardStyle.ELEGANT_LUXURY, CardStyle.MODERN_GRADIENT, CardStyle.GLASSMORPHISM].includes(style);
-     const uTextColor = isDarkBg ? '#ffffff' : '#333333';
-     const uStroke = isDarkBg ? `stroke="rgba(0,0,0,0.5)" stroke-width="0.5"` : '';
-
-     userInfoLayer = `
-       <g id="layer-user-info" opacity="${userInfo.opacity}">
-          <defs>
-             <clipPath id="u-clip-${sectionIndex}">
-                <circle cx="${ux + uSize/2}" cy="${uy + uSize/2}" r="${uSize/2}" />
-             </clipPath>
-          </defs>
-          <circle cx="${ux + uSize/2}" cy="${uy + uSize/2}" r="${uSize/2}" fill="#ddd" stroke="#fff" stroke-width="2" />
-          <image href="${userInfo.avatar}" x="${ux}" y="${uy}" width="${uSize}" height="${uSize}" clip-path="url(#u-clip-${sectionIndex})" preserveAspectRatio="xMidYMid slice" />
-          <text x="${textX}" y="${uy + uSize/2 + uFontSize/3}" font-family="${s.font}" font-size="${uFontSize}" font-weight="bold" fill="${uTextColor}" text-anchor="${textAnchor}" ${uStroke}>
-             ${userInfo.nickname}
-          </text>
-       </g>
-     `;
-  }
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
-  ${defs}
-  <g id="layer-background">${bgElement}</g>
-  <g id="layer-content">${mainContent}</g>
-  ${userInfoLayer}
-</svg>`;
-};
-
-
 // --- Sub-Components ---
-
 const SlidePreview: React.FC<{ content: CardContent; style: CardStyle; styleName: string; userInfo: UserInfo }> = ({ content, style, userInfo }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const totalSlides = 1 + content.sections.length;
@@ -400,22 +226,30 @@ const CardWrapper: React.FC<{ content: CardContent; style: CardStyle; styleName:
     try {
       const timestamp = new Date().getTime();
       const fileName = `magic-card-${style.toLowerCase()}-${timestamp}.${format}`;
-      const node = cardRef.current;
-
+      
       let dataUrl = '';
+      
       if (format === 'svg') {
-         // Use manual generator for single SVG
-         const svgString = generateEditableSvg(content, style, 'cover', 0, 750, 1000, userInfo);
-         const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+         // USE CUSTOM GENERATOR FOR SVG with Encoding Fix
+         const svgString = generateStandardSvg(content, style, 'cover', 0, userInfo);
+         
+         // Fix encoding for Visio/Windows: Add BOM and use Uint8Array
+         const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+         const svgBytes = new TextEncoder().encode(svgString);
+         const blob = new Blob([bom, svgBytes], { type: 'image/svg+xml;charset=utf-8' });
+         
          dataUrl = URL.createObjectURL(blob);
       } else {
-        dataUrl = await toPng(node, { quality: 1.0, pixelRatio: 2 });
+         // USE HTML-TO-IMAGE FOR PNG
+         const node = cardRef.current;
+         dataUrl = await toPng(node, { quality: 1.0, pixelRatio: 2 });
       }
 
       const link = document.createElement('a');
       link.download = fileName;
       link.href = dataUrl;
       link.click();
+      
       if (format === 'svg') URL.revokeObjectURL(dataUrl);
 
     } catch (err) {
@@ -457,22 +291,20 @@ const CardWrapper: React.FC<{ content: CardContent; style: CardStyle; styleName:
 
     try {
       for (const page of task.pages) {
-        let fileContent: string | Blob = '';
-        const ext = format;
-
+        let fileContent: string = '';
+        
         if (format === 'svg') {
-           // Use the Native SVG Generator
-           const svgString = generateEditableSvg(content, style, page.renderMode, page.sectionIndex, width, height, userInfo);
-           fileContent = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+           // Use Custom Generator
+           fileContent = generateStandardSvg(content, style, page.renderMode, page.sectionIndex, userInfo);
         } else {
-           // Use HTML-to-Image for PNG
+           // Use PNG Generator
            setExportState({ isActive: true, platform, pageConfig: page });
            await new Promise(resolve => setTimeout(resolve, 250)); // Wait for render
+           
            if (hiddenExportRef.current) {
              const node = hiddenExportRef.current.firstElementChild as HTMLElement;
              if (node) {
-                const dataUrl = await toPng(node, { width, height, pixelRatio: 2 });
-                fileContent = dataUrl;
+               fileContent = await toPng(node, { width, height, pixelRatio: 2 });
              }
            }
         }
@@ -480,23 +312,25 @@ const CardWrapper: React.FC<{ content: CardContent; style: CardStyle; styleName:
         // Handle Download
         if (method === 'individual') {
            const link = document.createElement('a');
-           link.download = `card-${style.toLowerCase()}-${page.index}.${ext}`;
-           
-           if (fileContent instanceof Blob) {
-              const url = URL.createObjectURL(fileContent);
-              link.href = url;
-              link.click();
-              await new Promise(r => setTimeout(() => { URL.revokeObjectURL(url); r(true); }, 200));
+           link.download = `card-${style.toLowerCase()}-${page.index}.${format}`;
+           if (format === 'svg') {
+             // Fix Encoding
+             const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+             const svgBytes = new TextEncoder().encode(fileContent);
+             const blob = new Blob([bom, svgBytes], { type: 'image/svg+xml;charset=utf-8' });
+             link.href = URL.createObjectURL(blob);
            } else {
-              link.href = fileContent as string;
-              link.click();
-              await new Promise(r => setTimeout(r, 200));
+             link.href = fileContent;
            }
+           link.click();
+           await new Promise(r => setTimeout(r, 200));
         } else if (method === 'zip' && imgFolder) {
-           if (fileContent instanceof Blob) {
+           if (format === 'svg') {
+              // Note: JSZip handles strings as UTF-8 by default, but we can store blob if needed.
+              // For simplicity with JSZip, standard string usually works, but to be safe for Windows extraction:
               imgFolder.file(`card-${page.index.toString().padStart(2, '0')}.svg`, fileContent);
            } else {
-              imgFolder.file(`card-${page.index.toString().padStart(2, '0')}.png`, (fileContent as string).split(',')[1], {base64: true});
+              imgFolder.file(`card-${page.index.toString().padStart(2, '0')}.png`, fileContent.split(',')[1], {base64: true});
            }
         }
       }
@@ -567,6 +401,9 @@ const CardWrapper: React.FC<{ content: CardContent; style: CardStyle; styleName:
         <button onClick={() => handleDownloadSingle('png')} disabled={!!isDownloading} className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-all disabled:opacity-50">
           {isDownloading === 'png' ? <Loader2 size={14} className="animate-spin" /> : <Image size={14} />} 长图
         </button>
+        <button onClick={() => handleDownloadSingle('svg')} disabled={!!isDownloading} className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-all disabled:opacity-50">
+          {isDownloading === 'svg' ? <Loader2 size={14} className="animate-spin" /> : <FileCode size={14} />} SVG
+        </button>
         <div className="relative">
           <button onClick={() => setShowMenu(!showMenu)} disabled={!!isDownloading} className={`flex items-center justify-center gap-1 px-2 py-2 text-xs font-medium border rounded-lg transition-all disabled:opacity-50 ${showMenu ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
              {isDownloading === 'series' ? <Loader2 size={14} className="animate-spin" /> : <Layers size={14} />} <ChevronDown size={12} />
@@ -604,6 +441,20 @@ const CardWrapper: React.FC<{ content: CardContent; style: CardStyle; styleName:
   );
 };
 
+const getStyleName = (style: CardStyle): string => {
+  switch (style) {
+    case CardStyle.MINIMALIST: return '极简留白';
+    case CardStyle.MODERN_GRADIENT: return '现代渐变';
+    case CardStyle.CYBERPUNK: return '赛博朋克';
+    case CardStyle.NEO_BRUTALISM: return '新丑主义';
+    case CardStyle.ELEGANT_LUXURY: return '黑金奢华';
+    case CardStyle.NATURE_ORGANIC: return '自然有机';
+    case CardStyle.GLASSMORPHISM: return '毛玻璃拟态';
+    case CardStyle.NEWSPAPER: return '复古报纸';
+    default: return style;
+  }
+};
+
 const CardGrid: React.FC<CardGridProps> = ({ content, onContentChange }) => {
   const [userInfo, setUserInfo] = useState<UserInfo>({
     enabled: false,
@@ -612,123 +463,132 @@ const CardGrid: React.FC<CardGridProps> = ({ content, onContentChange }) => {
     position: 'bottom-left',
     customPos: { x: 5, y: 90 },
     scale: 1,
-    opacity: 0.8
+    opacity: 0.9
   });
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setUserInfo(prev => ({ ...prev, avatar: reader.result as string }));
+        setUserInfo(prev => ({ ...prev, avatar: reader.result as string, enabled: true }));
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const STYLES = [
-    { id: CardStyle.MINIMALIST, name: '极简白' },
-    { id: CardStyle.MODERN_GRADIENT, name: '现代渐变' },
-    { id: CardStyle.CYBERPUNK, name: '赛博朋克' },
-    { id: CardStyle.NEO_BRUTALISM, name: '新丑主义' },
-    { id: CardStyle.ELEGANT_LUXURY, name: '黑金奢华' },
-    { id: CardStyle.NATURE_ORGANIC, name: '自然有机' },
-    { id: CardStyle.GLASSMORPHISM, name: '毛玻璃' },
-    { id: CardStyle.NEWSPAPER, name: '复古报纸' },
-  ];
-
   return (
-    <div className="container mx-auto px-4 pb-20">
-       {/* User Info Controls */}
-       <div className="bg-white rounded-xl p-6 mb-8 shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between mb-4">
-             <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                <User size={18} /> 个人信息水印
-             </h3>
-             <label className="relative inline-flex items-center cursor-pointer">
-               <input type="checkbox" checked={userInfo.enabled} onChange={e => setUserInfo(prev => ({ ...prev, enabled: e.target.checked }))} className="sr-only peer" />
-               <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-             </label>
-          </div>
-          
-          {userInfo.enabled && (
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in slide-in-from-top-4 duration-300">
-                <div className="space-y-4">
-                   <div className="flex gap-4 items-start">
-                      <div className="w-20 h-20 rounded-full bg-gray-100 flex-shrink-0 overflow-hidden border border-gray-200 relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-                         {userInfo.avatar ? <img src={userInfo.avatar} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-400"><Upload size={24} /></div>}
-                         <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-xs font-medium">更换</div>
-                      </div>
-                      <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} />
-                      
-                      <div className="flex-1 space-y-3">
-                         <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-1">昵称</label>
-                            <input type="text" value={userInfo.nickname} onChange={e => setUserInfo(prev => ({ ...prev, nickname: e.target.value }))} className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none" placeholder="输入昵称" />
-                         </div>
-                         <div className="flex gap-4">
-                            <div className="flex-1">
-                               <label className="block text-xs font-medium text-gray-500 mb-1">缩放: {userInfo.scale}</label>
-                               <input type="range" min="0.5" max="1.5" step="0.1" value={userInfo.scale} onChange={e => setUserInfo(prev => ({ ...prev, scale: parseFloat(e.target.value) }))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600" />
-                            </div>
-                            <div className="flex-1">
-                               <label className="block text-xs font-medium text-gray-500 mb-1">透明度: {userInfo.opacity}</label>
-                               <input type="range" min="0.1" max="1.0" step="0.1" value={userInfo.opacity} onChange={e => setUserInfo(prev => ({ ...prev, opacity: parseFloat(e.target.value) }))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600" />
-                            </div>
-                         </div>
-                      </div>
-                   </div>
+    <div className="container mx-auto px-4 pb-24 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      
+      {/* User Info Toolbar */}
+      <div className="mb-12 bg-white rounded-xl p-6 shadow-sm border border-slate-100">
+         <div className="flex flex-col md:flex-row gap-8 items-start">
+            
+            <div className="flex-1 space-y-4 w-full">
+               <div className="flex items-center justify-between">
+                  <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                     <User size={20} className="text-indigo-600" />
+                     <span>个人水印设置</span>
+                  </h3>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" className="sr-only peer" checked={userInfo.enabled} onChange={e => setUserInfo({...userInfo, enabled: e.target.checked})} />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                  </label>
+               </div>
 
-                   <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-2">位置预设</label>
-                      <div className="flex gap-2">
-                         {['top-left', 'top-right', 'bottom-left', 'bottom-right'].map(pos => (
-                            <button 
-                              key={pos}
-                              onClick={() => setUserInfo(prev => ({ ...prev, position: pos as UserInfoPosition }))}
-                              className={`p-2 border rounded-md transition-all ${userInfo.position === pos ? 'bg-indigo-50 border-indigo-500 text-indigo-600 ring-1 ring-indigo-500' : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'}`}
-                            >
-                               <div className={`w-4 h-4 rounded-sm border-2 ${
-                                 pos.includes('top') ? 'border-t-current' : 'border-b-current'
-                               } ${
-                                 pos.includes('left') ? 'border-l-current' : 'border-r-current'
-                               } border-transparent`}></div>
-                            </button>
-                         ))}
-                         <button 
-                              onClick={() => setUserInfo(prev => ({ ...prev, position: 'custom' }))}
-                              className={`px-3 py-1 border rounded-md text-xs font-medium transition-all flex items-center gap-1 ${userInfo.position === 'custom' ? 'bg-indigo-50 border-indigo-500 text-indigo-600 ring-1 ring-indigo-500' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}
-                         >
-                            <Move size={14} /> 自定义
-                         </button>
-                      </div>
-                   </div>
-                </div>
+               {userInfo.enabled && (
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-top-2">
+                    <div className="space-y-4">
+                       <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-1">头像</label>
+                          <div className="flex items-center gap-3">
+                             <div className="w-10 h-10 rounded-full bg-slate-100 overflow-hidden border border-slate-200">
+                                {userInfo.avatar ? <img src={userInfo.avatar} className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 text-slate-300" />}
+                             </div>
+                             <label className="flex-1">
+                                <span className="sr-only">Choose file</span>
+                                <input type="file" accept="image/*" onChange={handleAvatarUpload} className="block w-full text-xs text-slate-500
+                                  file:mr-2 file:py-1.5 file:px-3
+                                  file:rounded-full file:border-0
+                                  file:text-xs file:font-semibold
+                                  file:bg-indigo-50 file:text-indigo-700
+                                  hover:file:bg-indigo-100 cursor-pointer
+                                "/>
+                             </label>
+                          </div>
+                       </div>
+                       
+                       <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-1">昵称</label>
+                          <input 
+                             type="text" 
+                             value={userInfo.nickname} 
+                             onChange={e => setUserInfo({...userInfo, nickname: e.target.value})}
+                             className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none"
+                          />
+                       </div>
 
-                <div>
-                   {userInfo.position === 'custom' && (
-                      <PositionEditor userInfo={userInfo} setUserInfo={setUserInfo} content={content} />
-                   )}
-                </div>
-             </div>
-          )}
-       </div>
+                       <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-1">预设位置</label>
+                          <div className="grid grid-cols-3 gap-2">
+                             {['bottom-left', 'bottom-right', 'top-left', 'top-right'].map((pos) => (
+                                <button 
+                                  key={pos}
+                                  onClick={() => setUserInfo({...userInfo, position: pos as any})}
+                                  className={`px-2 py-1.5 text-xs border rounded ${userInfo.position === pos ? 'bg-indigo-50 border-indigo-200 text-indigo-600 font-bold' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                >
+                                  {pos}
+                                </button>
+                             ))}
+                             <button 
+                                onClick={() => setUserInfo({...userInfo, position: 'custom'})}
+                                className={`px-2 py-1.5 text-xs border rounded col-span-2 ${userInfo.position === 'custom' ? 'bg-indigo-50 border-indigo-200 text-indigo-600 font-bold' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                             >
+                                <Move size={10} className="inline mr-1"/> 自定义位置
+                             </button>
+                          </div>
+                       </div>
+                       
+                       <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1">大小 ({userInfo.scale.toFixed(1)})</label>
+                            <input type="range" min="0.5" max="1.5" step="0.1" value={userInfo.scale} onChange={e => setUserInfo({...userInfo, scale: parseFloat(e.target.value)})} className="w-full accent-indigo-600" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1">透明度 ({Math.round(userInfo.opacity * 100)}%)</label>
+                            <input type="range" min="0.1" max="1" step="0.1" value={userInfo.opacity} onChange={e => setUserInfo({...userInfo, opacity: parseFloat(e.target.value)})} className="w-full accent-indigo-600" />
+                          </div>
+                       </div>
+                    </div>
 
-       {/* Grid */}
-       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {STYLES.map((style) => (
-             <CardWrapper 
-                key={style.id} 
-                content={content} 
-                style={style.id} 
-                styleName={style.name} 
-                userInfo={userInfo}
-                onContentChange={onContentChange}
-             />
-          ))}
-       </div>
+                    {userInfo.position === 'custom' && (
+                       <div className="w-full max-w-[200px] mx-auto">
+                          <PositionEditor userInfo={userInfo} setUserInfo={setUserInfo} content={content} />
+                       </div>
+                    )}
+                 </div>
+               )}
+            </div>
+         </div>
+      </div>
+      
+      {/* Card Grid */}
+      <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+         <Palette size={20} className="text-indigo-600" /> 选择风格并导出
+      </h2>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+        {Object.values(CardStyle).map((style) => (
+          <CardWrapper
+            key={style}
+            content={content}
+            style={style}
+            styleName={getStyleName(style)}
+            userInfo={userInfo}
+            onContentChange={onContentChange}
+          />
+        ))}
+      </div>
     </div>
   );
 };
