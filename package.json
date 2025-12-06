@@ -17,7 +17,9 @@
     "lucide-react": "^0.454.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "uuid": "^11.0.3"
+    "uuid": "^11.0.3",
+    "puppeteer-core": "^21.0.0",
+    "@sparticuz/chromium": "^119.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
